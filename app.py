@@ -4,7 +4,7 @@ from copy import deepcopy
 import multiprocessing as mp
 import tkinter as tk
 from tkinter import messagebox
-from configuration import (BASE_DIR, DEFAULT_CONFIG, load_config, save_config,
+from configuration import (BASE_DIR, DEFAULT_CONFIG, IS_WINDOWS, load_config, save_config,
                            collection_config, protocol_summary)
 from ui import center_window, separator, setup_style, show_help
 
@@ -42,7 +42,9 @@ class MainApp:
         self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
         self._build_ui()
         self._refresh_summary()
-        center_window(self.root, 540, 580, minimum=(460, 580))
+        # На Windows задаём больший размер главного окна
+        width, height = (615, 660) if IS_WINDOWS else (540, 580)
+        center_window(self.root, width, height, minimum=(460, 580))
         if self.config_error:
             self.root.after(100, lambda: messagebox.showwarning(
                 "Не удалось прочитать настройки",
@@ -164,13 +166,18 @@ class MainApp:
             # Читаем причину ошибки, если сборщик успел её отправить
             if connection.poll():
                 detail = connection.recv()
-        except EOFError:
+        except (EOFError, OSError):
+            # Закрытый канал после выхода из сборщика не мешает возврату меню
             pass
         finally:
-            connection.close()
-        self._process = None
-        self.root.deiconify()
-        self.root.lift()
+            try:
+                connection.close()
+            except OSError:
+                pass
+            # Возвращаем меню независимо от результата чтения канала
+            self._process = None
+            self.root.deiconify()
+            self.root.lift()
         if detail or process.exitcode not in (0, -2, -15):
             messagebox.showerror("Сбор завершён с ошибкой",
                                  detail or f"Код завершения: {process.exitcode}", parent=self.root)
